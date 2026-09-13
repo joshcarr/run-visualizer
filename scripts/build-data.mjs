@@ -3,11 +3,27 @@
 import { readFileSync, writeFileSync, readdirSync, mkdirSync, rmSync } from 'node:fs'
 import { join, basename } from 'node:path'
 import tzLookup from 'tz-lookup'
+import {
+  activeSeries,
+  bestForDistance,
+  bestForDuration,
+  paceHistogram,
+  paceProfile,
+  pausedIntervals,
+} from './best-efforts.mjs'
+import {
+  CORE_FRACTION,
+  DISTANCE_EFFORTS,
+  DURATION_EFFORTS,
+  PROFILE_BUCKETS,
+} from '../src/lib/efforts.js'
 
 const SRC = 'activities'
 const OUT = join('public', 'data')
 const GAP_MS = 20000 // a jump this big in the GPS track means the run was paused
 const MAX_POINTS = 2000
+
+const HIST = { from: 2, to: 15, width: 0.1 }
 
 const R_EARTH_KM = 6371.0088
 const toRad = (d) => (d * Math.PI) / 180
@@ -129,6 +145,74 @@ function thumbnail(points, maxPoints = 90) {
   ])
 }
 
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+function localFields(ms, tz) {
+  const parts = {}
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    weekday: 'short',
+    hour: '2-digit',
+    hour12: false,
+  })
+  for (const p of fmt.formatToParts(ms)) parts[p.type] = p.value
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    dow: WEEKDAYS.indexOf(parts.weekday),
+    hour: Number(parts.hour) % 24,
+  }
+}
+
+// Every "fastest contiguous X" the run is long enough for, plus its core: the
+// fastest stretch covering most of the distance, which is the run with the
+// walk-out at the start and the walk-back at the end cut off.
+function bestEfforts(series) {
+  const totalKm = series.d[series.d.length - 1]
+  const totalSec = series.t[series.t.length - 1]
+  const distances = {}
+  for (const effort of DISTANCE_EFFORTS) {
+    if (effort.km > totalKm + 1e-9) continue
+    const best = bestForDistance(series, effort.km)
+    if (!best) continue
+    distances[effort.key] = {
+      sec: round(best.sec, 1),
+      startKm: round(best.startKm, 3),
+      startSec: round(best.startSec, 1),
+    }
+  }
+
+  const durations = {}
+  for (const effort of DURATION_EFFORTS) {
+    if (effort.sec > totalSec + 1e-9) continue
+    const best = bestForDuration(series, effort.sec)
+    if (!best) continue
+    durations[effort.key] = {
+      km: round(best.km, 4),
+      startKm: round(best.startKm, 3),
+      startSec: round(best.startSec, 1),
+    }
+  }
+
+  const coreTarget = totalKm * CORE_FRACTION
+  const core = bestForDistance(series, coreTarget)
+
+  return {
+    activeSec: round(totalSec, 1),
+    distances,
+    durations,
+    core: core && {
+      km: round(coreTarget, 4),
+      sec: round(core.sec, 1),
+      startKm: round(core.startKm, 3),
+      startSec: round(core.startSec, 1),
+    },
+    profile: paceProfile(series, PROFILE_BUCKETS)?.map((v) => round(v, 3)) ?? null,
+  }
+}
+
 function buildRun(file) {
   const activity = JSON.parse(readFileSync(join(SRC, file), 'utf8'))
   const id = basename(file, '.json')
@@ -143,6 +227,12 @@ function buildRun(file) {
 
   const distanceKm = summaryValue(activity, 'distance', 'total') ?? 0
   const durationSec = activity.active_duration_ms / 1000
+
+  // Nike's own distance stream, with paused time taken out — the basis for
+  // every best-effort number. Far steadier than anything derived from GPS.
+  const paced = activeSeries(metricValues(activity, 'distance'), pausedIntervals(activity))
+  const efforts = paced.d[paced.d.length - 1] > 0 ? bestEfforts(paced) : null
+  const histogram = efforts ? paceHistogram(paced, { ...HIST, slice: 10 }) : null
 
   // Raw track, with pauses detected from gaps between GPS fixes.
   const raw = []
@@ -210,6 +300,7 @@ function buildRun(file) {
     },
     milesMarkers: markersFor(points, 1.609344),
     kmMarkers: markersFor(points, 1),
+    efforts,
   }
 
   const summary = {
@@ -226,9 +317,14 @@ function buildRun(file) {
     tempC: detail.tempC,
     weather: detail.weather,
     thumb: thumbnail(points),
+    efforts,
+    // Local calendar fields, worked out here where the timezone is already
+    // known, so the analysis page can group by week or weekday without
+    // re-deriving them 78 times in the browser.
+    ...localFields(detail.startMs, detail.tz),
   }
 
-  return { detail, summary }
+  return { detail, summary, histogram }
 }
 
 rmSync(OUT, { recursive: true, force: true })
@@ -236,12 +332,14 @@ mkdirSync(join(OUT, 'runs'), { recursive: true })
 
 const files = readdirSync(SRC).filter((f) => f.endsWith('.json'))
 const summaries = []
+const histogram = new Array(Math.round((HIST.to - HIST.from) / HIST.width)).fill(0)
 let skipped = 0
 for (const file of files) {
   const built = buildRun(file)
   if (!built) { skipped++; continue }
   writeFileSync(join(OUT, 'runs', `${built.detail.id}.json`), JSON.stringify(built.detail))
   summaries.push(built.summary)
+  if (built.histogram) built.histogram.forEach((sec, i) => { histogram[i] += sec })
 }
 summaries.sort((a, b) => b.startMs - a.startMs)
 
@@ -258,7 +356,13 @@ const totals = summaries.reduce(
 
 writeFileSync(
   join(OUT, 'index.json'),
-  JSON.stringify({ generatedAt: Date.now(), totals, runs: summaries }),
+  JSON.stringify({
+    generatedAt: Date.now(),
+    totals,
+    // Seconds spent at each pace across every run, bucketed in minutes per km.
+    paceHistogram: { ...HIST, seconds: histogram.map((v) => round(v, 0)) },
+    runs: summaries,
+  }),
 )
 
 console.log(`built ${summaries.length} runs${skipped ? `, skipped ${skipped} without usable GPS` : ''}`)

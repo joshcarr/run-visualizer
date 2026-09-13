@@ -7,33 +7,12 @@ import {
   toPace,
   UNITS,
 } from '../lib/units.js'
+import { extent, niceTicks } from '../lib/scale.js'
 
 const PAD = { left: 46, right: 14, top: 14, bottom: 22 }
 const PACE_H = 132
 const ELE_H = 84
 const GAP = 40
-
-function niceTicks(min, max, count) {
-  const span = max - min
-  if (!(span > 0)) return [min]
-  const raw = span / count
-  const mag = 10 ** Math.floor(Math.log10(raw))
-  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw) ?? 10 * mag
-  const ticks = []
-  for (let v = Math.ceil(min / step) * step; v <= max + step / 1000; v += step) ticks.push(v)
-  return ticks
-}
-
-function extent(values) {
-  let min = Infinity
-  let max = -Infinity
-  for (const v of values) {
-    if (v == null) continue
-    if (v < min) min = v
-    if (v > max) max = v
-  }
-  return Number.isFinite(min) ? [min, max] : [0, 1]
-}
 
 // Builds an SVG path, lifting the pen wherever the run was paused.
 function linePath(xs, ys, breaks) {
@@ -64,7 +43,7 @@ function nearestIndex(distances, target) {
   return lo
 }
 
-export default function PaceElevationChart({ run, unit, cursor, onCursorChange }) {
+export default function PaceElevationChart({ run, unit, cursor, onCursorChange, highlight = null }) {
   const wrapRef = useRef(null)
   const [width, setWidth] = useState(720)
   const u = UNITS[unit]
@@ -138,6 +117,7 @@ export default function PaceElevationChart({ run, unit, cursor, onCursorChange }
     return {
       xs,
       totalD,
+      xOf: (km) => PAD.left + (toDistance(km, unit) / (totalD || 1)) * plotW,
       showTotalLabel: PAD.left + plotW - lastMarkerX > 46,
       distances: d.map((v) => toDistance(v, unit)),
       paceVals,
@@ -208,6 +188,15 @@ export default function PaceElevationChart({ run, unit, cursor, onCursorChange }
         onPointerLeave={() => onCursorChange(null)}
         onBlur={() => onCursorChange(null)}
       >
+        {highlight && (
+          <rect
+            className="chart__highlight"
+            x={geom.xOf(highlight.startKm)}
+            width={Math.max(2, geom.xOf(highlight.endKm) - geom.xOf(highlight.startKm))}
+            y={paceTop}
+            height={PACE_H}
+          />
+        )}
         {geom.paceTicks.map((v) => (
           <g key={`pt${v}`}>
             <line className="chart__grid" x1={PAD.left} x2={PAD.left + plotW} y1={geom.paceY(v)} y2={geom.paceY(v)} />

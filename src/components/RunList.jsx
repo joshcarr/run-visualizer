@@ -84,7 +84,12 @@ export default function RunList({ unit, onUnitChange }) {
           <h1>Activity</h1>
           <p className="page__sub">Runs from Nike Run Club</p>
         </div>
-        <UnitToggle unit={unit} onChange={onUnitChange} />
+        <div className="page__actions">
+          <a className="linkish" href="#/analysis">
+            Analysis ›
+          </a>
+          <UnitToggle unit={unit} onChange={onUnitChange} />
+        </div>
       </header>
 
       {error && <p className="notice">Couldn’t load your runs: {error.message}</p>}

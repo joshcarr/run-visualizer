@@ -12,9 +12,11 @@ const ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, &copy; <a href="https://carto.com/attributions">CARTO</a>'
 
 // Consecutive points with a similar pace share one polyline, so a 500-point
-// track draws as a few dozen paths instead of 500.
-function buildSegments(track, range) {
-  const { lat, lon, pace, breaks } = track
+// track draws as a few dozen paths instead of 500. A highlighted stretch is
+// just another reason to start a new polyline, so the split falls in the right
+// place and the rest of the route can be dimmed behind it.
+function buildSegments(track, range, highlight) {
+  const { lat, lon, pace, d, breaks } = track
   const breakSet = new Set(breaks)
   const [fast, slow] = range ?? [0, 1]
   const span = slow > fast ? slow - fast : 1
@@ -23,15 +25,18 @@ function buildSegments(track, range) {
     if (p == null) return Math.floor(BINS / 2)
     return Math.max(0, Math.min(BINS - 1, Math.floor(((p - fast) / span) * BINS)))
   }
+  const lit = (i) =>
+    !highlight || (d[i] >= highlight.startKm - 1e-9 && d[i] <= highlight.endKm + 1e-9)
 
   const segments = []
   let current = null
   for (let i = 0; i < lat.length; i++) {
     const b = bin(i)
+    const on = lit(i)
     const isBreak = breakSet.has(i)
-    if (!current || isBreak || b !== current.bin) {
+    if (!current || isBreak || b !== current.bin || on !== current.lit) {
       if (current && !isBreak) current.points.push([lat[i], lon[i]])
-      current = { bin: b, points: [] }
+      current = { bin: b, lit: on, points: [] }
       if (!isBreak && i > 0) current.points.push([lat[i - 1], lon[i - 1]])
       current.points.push([lat[i], lon[i]])
       segments.push(current)
@@ -43,19 +48,24 @@ function buildSegments(track, range) {
     .filter((s) => s.points.length > 1)
     .map((s) => ({
       points: s.points,
+      lit: s.lit,
       color: paceColor(fast + ((s.bin + 0.5) / BINS) * span, range),
     }))
 }
 
-export default function RouteMap({ run, unit, cursor, onCursorChange }) {
+export default function RouteMap({ run, unit, cursor, onCursorChange, highlight = null }) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
   const tileRef = useRef(null)
   const routeRef = useRef(null)
   const markerRef = useRef(null)
   const cursorRef = useRef(null)
+  const framedRef = useRef(null)
 
-  const segments = useMemo(() => buildSegments(run.track, run.paceRange), [run])
+  const segments = useMemo(
+    () => buildSegments(run.track, run.paceRange, highlight),
+    [run, highlight],
+  )
   const markers = unit === 'mi' ? run.milesMarkers : run.kmMarkers
   const u = UNITS[unit]
 
@@ -102,8 +112,8 @@ export default function RouteMap({ run, unit, cursor, onCursorChange }) {
     for (const seg of segments) {
       L.polyline(seg.points, {
         color: seg.color,
-        weight: 5,
-        opacity: 0.95,
+        weight: seg.lit && highlight ? 7 : 5,
+        opacity: seg.lit ? 0.95 : 0.18,
         lineCap: 'round',
         lineJoin: 'round',
       }).addTo(layer)
@@ -149,12 +159,17 @@ export default function RouteMap({ run, unit, cursor, onCursorChange }) {
     cursorRef.current = cursorMarker
     markerRef.current = cursorMarker
 
-    map.fitBounds(L.latLngBounds(lat.map((v, i) => [v, lon[i]])), { padding: [28, 28] })
+    // Only frame the route when the run itself changes; picking a best effort
+    // shouldn't yank the map back to a fresh zoom.
+    if (framedRef.current !== run.id) {
+      map.fitBounds(L.latLngBounds(lat.map((v, i) => [v, lon[i]])), { padding: [28, 28] })
+      framedRef.current = run.id
+    }
 
     return () => {
       layer.remove()
     }
-  }, [run, segments, markers, unit, u.distance, u.pace])
+  }, [run, segments, markers, unit, u.distance, u.pace, highlight])
 
   // Follow the chart scrubber.
   useEffect(() => {
@@ -175,6 +190,12 @@ export default function RouteMap({ run, unit, cursor, onCursorChange }) {
         ref={containerRef}
         onMouseLeave={() => onCursorChange?.(null)}
       />
+      {highlight && (
+        <p className="map__highlight">
+          Highlighted: <b>{highlight.label}</b> at {formatPace(highlight.paceMinPerKm, unit)}
+          <span className="unit">{u.pace}</span>
+        </p>
+      )}
       <figcaption className="map__legend">
         <span className="map__legend-label">Pace</span>
         <span className="map__legend-end">{formatPace(fast, unit)}</span>
