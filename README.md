@@ -10,6 +10,32 @@ npm run dev      # regenerates the data, then serves on http://localhost:5173
 npm run build    # regenerates the data, then builds to dist/
 ```
 
+## Getting new runs
+
+```bash
+cp .env.example .env    # once: paste a Nike token in
+npm run sync            # downloads runs that aren't in activities/ yet
+npm run dev             # rebuilds the data and serves the app
+```
+
+`scripts/nike-sync.mjs` walks Nike's activity feed newest-first, skips anything
+already saved under `activities/`, and downloads the rest with the full metric
+set. It stops as soon as it hits a page of runs it already has, so a routine
+sync is two or three requests. `.env.example` explains where to find a token;
+`.env` is gitignored.
+
+| flag | |
+| --- | --- |
+| `--dry-run` | list what would be downloaded, write nothing |
+| `--all` | walk the whole history instead of stopping at the first page you already have, which fills gaps |
+| `--limit N` | stop after N new runs |
+
+Pass them through npm with a `--` separator: `npm run sync -- --dry-run`.
+
+If Nike answers 401 the token has expired. An access token lasts about an hour;
+a refresh token lasts months and the script exchanges it for a fresh access
+token on each run, so use one if you can get it.
+
 ## How it works
 
 `activities/` holds the raw NRC exports: one JSON per run, ~90 MB in total, each
