@@ -38,9 +38,9 @@ gitignored. Full details in `.env.example`.
 
 Pass them through npm with a `--` separator: `npm run sync -- --dry-run`.
 
-If Nike answers 401 with a token that's still in date, the website credential
-isn't being accepted for activity data on that account, and you'd need a token
-from the Run Club app itself instead.
+The website credential is enough for activity data — no Run Club app token
+needed. If Nike answers 401 on a token that's still in date, re-copy the blob;
+the entry gets rewritten when the session refreshes.
 
 ## How it works
 
