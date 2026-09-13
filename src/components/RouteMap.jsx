@@ -98,6 +98,9 @@ export default function RouteMap({ run, unit, cursor, onCursorChange, highlight 
       routeRef.current = null
       markerRef.current = null
       cursorRef.current = null
+      // A fresh map has no view of its own, so the next one has to be framed
+      // again even though it is showing the same run.
+      framedRef.current = null
     }
   }, [])
 
@@ -159,8 +162,9 @@ export default function RouteMap({ run, unit, cursor, onCursorChange, highlight 
     cursorRef.current = cursorMarker
     markerRef.current = cursorMarker
 
-    // Only frame the route when the run itself changes; picking a best effort
-    // shouldn't yank the map back to a fresh zoom.
+    // Frame the route once per run per map. Skipping it when only the
+    // highlight changed keeps picking a best effort from yanking the map back
+    // to a fresh zoom.
     if (framedRef.current !== run.id) {
       map.fitBounds(L.latLngBounds(lat.map((v, i) => [v, lon[i]])), { padding: [28, 28] })
       framedRef.current = run.id
