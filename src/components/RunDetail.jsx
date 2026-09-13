@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import RouteMap from './RouteMap.jsx'
+import RunEfforts, { effortRows } from './RunEfforts.jsx'
 import PaceElevationChart from './PaceElevationChart.jsx'
 import UnitToggle from './UnitToggle.jsx'
 import { useRun } from '../lib/useRunData.js'
@@ -137,11 +138,17 @@ function Splits({ rows, unit, avgPace }) {
   )
 }
 
-export default function RunDetail({ id, unit, onUnitChange }) {
+export default function RunDetail({ id, effortKey, unit, onUnitChange }) {
   const { data: run, error } = useRun(id)
   const [cursor, setCursor] = useState(null)
+  // Arriving from a leaderboard, the URL already says which effort to light up.
+  const [activeEffort, setActiveEffort] = useState(effortKey ?? null)
   const splits = useSplits(run, unit)
+  const efforts = useMemo(() => (run ? effortRows(run, unit) : []), [run, unit])
+  const highlight = efforts.find((row) => row.key === activeEffort) ?? null
   const u = UNITS[unit]
+
+  useEffect(() => setActiveEffort(effortKey ?? null), [effortKey, id])
 
   if (error) {
     return (
@@ -201,8 +208,15 @@ export default function RunDetail({ id, unit, onUnitChange }) {
         <Stat label="Steps" value={run.steps.toLocaleString()} />
       </dl>
 
-      <RouteMap run={run} unit={unit} cursor={cursor} onCursorChange={setCursor} />
-      <PaceElevationChart run={run} unit={unit} cursor={cursor} onCursorChange={setCursor} />
+      <RunEfforts rows={efforts} unit={unit} active={activeEffort} onSelect={setActiveEffort} />
+      <RouteMap run={run} unit={unit} cursor={cursor} onCursorChange={setCursor} highlight={highlight} />
+      <PaceElevationChart
+        run={run}
+        unit={unit}
+        cursor={cursor}
+        onCursorChange={setCursor}
+        highlight={highlight}
+      />
       <Splits rows={splits} unit={unit} avgPace={toPace(run.avgPaceMinPerKm, unit)} />
     </div>
   )

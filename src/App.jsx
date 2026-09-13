@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
 import RunList from './components/RunList.jsx'
 import RunDetail from './components/RunDetail.jsx'
+import Analysis from './components/Analysis.jsx'
 
 function currentRoute() {
-  const match = window.location.hash.match(/^#\/run\/([\w-]+)/)
-  return match ? { view: 'detail', id: match[1] } : { view: 'list' }
+  const hash = window.location.hash
+  // #/run/<id> optionally carries the best effort to highlight, as #/run/<id>/e/<key>
+  const run = hash.match(/^#\/run\/([\w-]+)(?:\/e\/(\w+))?/)
+  if (run) return { view: 'detail', id: run[1], effort: run[2] ?? null }
+  if (/^#\/analysis/.test(hash)) return { view: 'analysis' }
+  return { view: 'list' }
 }
 
 function useStored(key, fallback) {
@@ -43,9 +48,9 @@ export default function App() {
     window.scrollTo(0, 0)
   }, [route.view, route.id])
 
-  return route.view === 'detail' ? (
-    <RunDetail id={route.id} unit={unit} onUnitChange={setUnit} />
-  ) : (
-    <RunList unit={unit} onUnitChange={setUnit} />
-  )
+  if (route.view === 'detail') {
+    return <RunDetail id={route.id} effortKey={route.effort} unit={unit} onUnitChange={setUnit} />
+  }
+  if (route.view === 'analysis') return <Analysis unit={unit} onUnitChange={setUnit} />
+  return <RunList unit={unit} onUnitChange={setUnit} />
 }
