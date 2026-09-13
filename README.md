@@ -10,6 +10,18 @@ npm run dev      # regenerates the data, then serves on http://localhost:5173
 npm run build    # regenerates the data, then builds to dist/
 ```
 
+## Deploying
+
+`.github/workflows/deploy.yml` builds the site and publishes it to GitHub Pages
+on every push to `main`. The data build runs in CI from the exports in
+`activities/`, so `public/data/` stays generated rather than committed.
+
+Turn it on once under Settings → Pages by setting the source to **GitHub
+Actions**. The site is served from a subdirectory, which the app already handles:
+`vite.config.js` sets `base: './'` so the asset and data URLs stay relative, and
+the router reads `window.location.hash`, so a link straight to a single run
+survives a hard refresh without any redirect rules.
+
 ## How it works
 
 `activities/` holds the raw NRC exports: one JSON per run, ~90 MB in total, each
