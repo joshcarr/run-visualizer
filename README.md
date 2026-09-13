@@ -10,6 +10,38 @@ npm run dev      # regenerates the data, then serves on http://localhost:5173
 npm run build    # regenerates the data, then builds to dist/
 ```
 
+## Getting new runs
+
+```bash
+cp .env.example .env    # once: paste a Nike token in
+npm run sync            # downloads runs that aren't in activities/ yet
+npm run dev             # rebuilds the data and serves the app
+```
+
+`scripts/nike-sync.mjs` walks Nike's activity feed newest-first, skips anything
+already saved under `activities/`, and downloads the rest with the full metric
+set. It stops as soon as it hits a page of runs it already has, so a routine
+sync is two or three requests.
+
+The token comes from a logged-in nike.com session: DevTools, Application, Local
+Storage, the entry holding a JSON blob with `access_token` in it. Paste the
+whole blob into `.env` as `NIKE_CREDENTIAL` and the script pulls the token out.
+It lasts about an hour, so you re-copy it before a sync; the script prints how
+much life is left and stops before making a request if it's dead. `.env` is
+gitignored. Full details in `.env.example`.
+
+| flag | |
+| --- | --- |
+| `--dry-run` | list what would be downloaded, write nothing |
+| `--all` | walk the whole history instead of stopping at the first page you already have, which fills gaps |
+| `--limit N` | stop after N new runs |
+
+Pass them through npm with a `--` separator: `npm run sync -- --dry-run`.
+
+The website credential is enough for activity data — no Run Club app token
+needed. If Nike answers 401 on a token that's still in date, re-copy the blob;
+the entry gets rewritten when the session refreshes.
+
 ## Deploying
 
 `.github/workflows/deploy.yml` builds the site and publishes it to GitHub Pages

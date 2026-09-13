@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "data": "node scripts/build-data.mjs",
+    "sync": "node scripts/nike-sync.mjs",
     "dev": "npm run data && vite",
     "build": "npm run data && vite build",
     "preview": "vite preview"
