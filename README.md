@@ -21,8 +21,14 @@ npm run dev             # rebuilds the data and serves the app
 `scripts/nike-sync.mjs` walks Nike's activity feed newest-first, skips anything
 already saved under `activities/`, and downloads the rest with the full metric
 set. It stops as soon as it hits a page of runs it already has, so a routine
-sync is two or three requests. `.env.example` explains where to find a token;
-`.env` is gitignored.
+sync is two or three requests.
+
+The token comes from a logged-in nike.com session: DevTools, Application, Local
+Storage, the entry holding a JSON blob with `access_token` in it. Paste the
+whole blob into `.env` as `NIKE_CREDENTIAL` and the script pulls the token out.
+It lasts about an hour, so you re-copy it before a sync; the script prints how
+much life is left and stops before making a request if it's dead. `.env` is
+gitignored. Full details in `.env.example`.
 
 | flag | |
 | --- | --- |
@@ -32,9 +38,9 @@ sync is two or three requests. `.env.example` explains where to find a token;
 
 Pass them through npm with a `--` separator: `npm run sync -- --dry-run`.
 
-If Nike answers 401 the token has expired. An access token lasts about an hour;
-a refresh token lasts months and the script exchanges it for a fresh access
-token on each run, so use one if you can get it.
+If Nike answers 401 with a token that's still in date, the website credential
+isn't being accepted for activity data on that account, and you'd need a token
+from the Run Club app itself instead.
 
 ## How it works
 

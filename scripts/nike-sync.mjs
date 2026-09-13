@@ -81,8 +81,42 @@ function loadEnv () {
 
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
+// Seconds left on a JWT, or null if it doesn't parse.
+function secondsLeft (token) {
+  try {
+    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString())
+    if (!payload.exp) return null
+    return Math.round(payload.exp - Date.now() / 1000)
+  } catch {
+    return null
+  }
+}
+
+function reportLife (token) {
+  const left = secondsLeft(token)
+  if (left === null) return
+  if (left <= 0) {
+    fail(`That access token expired ${Math.abs(Math.round(left / 60))} minutes ago.\n` +
+      '  Reload nike.com and copy the credential out of local storage again (see .env.example).')
+  }
+  console.log(`Access token good for another ${Math.round(left / 60)} min.`)
+}
+
+// The nike.com credential blob copied out of local storage, pasted whole.
+function tokenFromCredential (raw) {
+  let parsed
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    fail('NIKE_CREDENTIAL is not valid JSON. Paste the whole local-storage value on one line, quotes and all.')
+  }
+  if (!parsed.access_token) fail('NIKE_CREDENTIAL has no access_token in it.')
+  return parsed.access_token
+}
+
 async function getAccessToken () {
   const refresh = process.env.NIKE_REFRESH_TOKEN?.trim()
+  const credential = process.env.NIKE_CREDENTIAL?.trim()
   const access = process.env.NIKE_ACCESS_TOKEN?.trim()
 
   if (refresh) {
@@ -107,10 +141,20 @@ async function getAccessToken () {
     return data.access_token
   }
 
-  if (access) return access
+  if (credential) {
+    const token = tokenFromCredential(credential)
+    reportLife(token)
+    return token
+  }
 
-  fail('No credentials. Copy .env.example to .env and put a Nike token in it.\n' +
-    '  Set NIKE_REFRESH_TOKEN (preferred, keeps working) or NIKE_ACCESS_TOKEN (expires in about an hour).')
+  if (access) {
+    reportLife(access)
+    return access
+  }
+
+  fail('No credentials. Copy .env.example to .env and paste a Nike token in it.\n' +
+    '  NIKE_CREDENTIAL is the easy one: the whole credential blob from nike.com local storage.\n' +
+    '  See .env.example for where to find it.')
 }
 
 async function nikeGet (path, token, { attempts = 3 } = {}) {
@@ -126,8 +170,9 @@ async function nikeGet (path, token, { attempts = 3 } = {}) {
     }
     if (response.ok) return response.json()
     if (response.status === 401 || response.status === 403) {
-      fail(`Nike rejected the token (HTTP ${response.status}).\n` +
-        '  Access tokens expire after about an hour. Set NIKE_REFRESH_TOKEN in .env, or paste a fresh NIKE_ACCESS_TOKEN.')
+      fail(`Nike rejected the token (HTTP ${response.status}) on ${url}.\n` +
+        '  Access tokens last about an hour — copy a fresh credential out of nike.com local storage.\n' +
+        '  If the token is still in date, this account may need a token from the Run Club app rather than the website.')
     }
     if (attempt >= attempts || (response.status < 500 && response.status !== 429)) {
       const body = await response.text().catch(() => '')
