@@ -181,3 +181,48 @@ export function paceHistogram(series, { slice = 10, from = 2, to = 15, width = 0
   }
   return bins
 }
+
+// The stretches where the running stopped. Sampled on the same fixed grid as
+// the pace histogram — the raw increments are far too jumpy to threshold — and
+// a stretch only counts once it has been held for minSec, so a kerb, a gate or
+// one confused GPS second doesn't read as a walk.
+export function walkBreaks(series, { paceMinPerKm, minSec, slice = 5 }) {
+  const total = series.t[series.t.length - 1]
+  if (!(total > 0)) return []
+  const out = []
+  let start = null
+  const close = (end) => {
+    if (start == null) return
+    if (end - start >= minSec) {
+      out.push({
+        startSec: start,
+        sec: end - start,
+        startKm: distanceAt(series, start),
+        km: distanceAt(series, end) - distanceAt(series, start),
+      })
+    }
+    start = null
+  }
+  for (let s = 0; s < total - 1e-9; s += slice) {
+    const to = Math.min(total, s + slice)
+    const km = distanceAt(series, to) - distanceAt(series, s)
+    const walking = !(km > 0) || (to - s) / 60 / km > paceMinPerKm
+    if (walking) {
+      if (start == null) start = s
+    } else {
+      close(s)
+    }
+  }
+  close(total)
+  return out
+}
+
+// The histogram with its empty tails dropped, so every run can carry its own
+// copy in the index without the zeroes outweighing the numbers.
+export function sparseHistogram(bins) {
+  const first = bins.findIndex((v) => v > 0)
+  if (first < 0) return null
+  let last = bins.length - 1
+  while (bins[last] === 0) last--
+  return { at: first, seconds: bins.slice(first, last + 1).map((v) => Math.round(v)) }
+}

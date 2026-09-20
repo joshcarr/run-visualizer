@@ -1,6 +1,8 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import EffortBoard from './EffortBoard.jsx'
 import { BarChart, XYChart } from './AnalysisCharts.jsx'
+import Tile from './Tile.jsx'
+import { LongSection, PlanSection, WalkSection } from './TrainingBlock.jsx'
 import UnitToggle from './UnitToggle.jsx'
 import { useRunIndex } from '../lib/useRunData.js'
 import {
@@ -12,11 +14,14 @@ import {
   coreRows,
   coreSummary,
   median,
+  mergeSpectra,
   rebinPace,
   rolling,
   shapeProfile,
+  trainingBlocks,
   weeklyVolume,
 } from '../lib/analysis.js'
+import { planRows } from '../lib/plan.js'
 import { DISTANCE_EFFORTS } from '../lib/efforts.js'
 import {
   formatDistance,
@@ -28,12 +33,15 @@ import {
   UNITS,
 } from '../lib/units.js'
 import { monthLabel, monthTicks, niceTicks } from '../lib/scale.js'
-import { monthKey, runDay } from '../lib/datetime.js'
+import { monthKey, monthShort, runDay } from '../lib/datetime.js'
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const WEEKDAYS_LONG = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
 const SECTIONS = [
+  ['plan', 'The ladder'],
+  ['long', 'Going long'],
+  ['walks', 'Walk breaks'],
   ['efforts', 'Best efforts'],
   ['sprints', 'Sprints'],
   ['core', 'Warm-up tax'],
@@ -74,26 +82,6 @@ function Section({ id, title, blurb, children }) {
       {blurb && <p className="asec__blurb">{blurb}</p>}
       {children}
     </section>
-  )
-}
-
-function Tile({ label, value, unit, sub, href }) {
-  const body = (
-    <>
-      <span className="tile__label">{label}</span>
-      <span className="tile__value">
-        {value}
-        {unit && <span className="unit"> {unit}</span>}
-      </span>
-      <span className="tile__sub">{sub}</span>
-    </>
-  )
-  return href ? (
-    <a className="tile" href={href}>
-      {body}
-    </a>
-  ) : (
-    <div className="tile">{body}</div>
   )
 }
 
@@ -544,12 +532,50 @@ function PatternsSection({ runs, unit }) {
   )
 }
 
+// The scope picker. Three months off and the running on either side of the gap
+// isn't the same training, so the page opens on the current block and the whole
+// history is one click away.
+function ScopePicker({ blocks, value, onChange }) {
+  if (blocks.length < 2) return null
+  const latest = blocks[blocks.length - 1]
+  return (
+    <div className="chips" role="group" aria-label="Which runs to analyse">
+      <button
+        type="button"
+        className={value === 'block' ? 'is-active' : ''}
+        onClick={() => onChange('block')}
+      >
+        Since {monthShort(latest.from.startMs, latest.from.tz)} · {latest.runs.length} runs
+      </button>
+      <button type="button" className={value === 'all' ? 'is-active' : ''} onClick={() => onChange('all')}>
+        Everything · {blocks.reduce((n, b) => n + b.runs.length, 0)} runs
+      </button>
+    </div>
+  )
+}
+
 export default function Analysis({ unit, onUnitChange }) {
   const { data, error } = useRunIndex()
-  const runs = data?.runs ?? []
-  const chron = useMemo(() => [...runs].sort((a, b) => a.startMs - b.startMs), [runs])
+  const [scope, setScope] = useState('block')
+  const all = data?.runs ?? []
+  const allChron = useMemo(() => [...all].sort((a, b) => a.startMs - b.startMs), [all])
+  const blocks = useMemo(() => trainingBlocks(allChron), [allChron])
+
+  const chron = useMemo(() => {
+    if (scope === 'all' || blocks.length < 2) return allChron
+    return blocks[blocks.length - 1].runs
+  }, [scope, blocks, allChron])
+  const runs = chron
+  const gap = blocks.length > 1 && scope === 'block' ? blocks[blocks.length - 2] : null
+
   const distances = useMemo(() => availableEfforts(runs, unit), [runs, unit])
   const sprints = useMemo(() => availableSprints(runs), [runs])
+  const planned = useMemo(() => planRows(runs), [runs])
+  const onPlan = planned.some((row) => row.actual.length)
+  const spectrum = useMemo(
+    () => (data?.paceHistogram ? mergeSpectra(runs, data.paceHistogram) : null),
+    [runs, data],
+  )
 
   return (
     <div className="page">
@@ -568,15 +594,22 @@ export default function Analysis({ unit, onUnitChange }) {
 
       {data && chron.length > 0 && (
         <>
+          <ScopePicker blocks={blocks} value={scope} onChange={setScope} />
+
           <p className="page__sub asec__lede">
             {runs.length} runs, {monthKey(chron[0].startMs, chron[0].tz)} to{' '}
-            {monthKey(chron[chron.length - 1].startMs, chron[chron.length - 1].tz)}. Every “fastest” below is
-            a contiguous stretch inside a single run, found by sliding a window across the whole thing, so
-            the slow walk at either end never counts against it.
+            {monthKey(chron[chron.length - 1].startMs, chron[chron.length - 1].tz)}
+            {gap
+              ? `, the block that started after ${Math.round(
+                  (chron[0].startMs - gap.to.startMs) / 86400000,
+                )} days off.`
+              : '.'}{' '}
+            Every “fastest” below is a contiguous stretch inside a single run, found by sliding a window
+            across the whole thing, so the slow walk at either end never counts against it.
           </p>
 
           <nav className="jump" aria-label="Sections">
-            {SECTIONS.map(([id, label]) => (
+            {SECTIONS.filter(([id]) => id !== 'plan' || onPlan).map(([id, label]) => (
               <button key={id} type="button" onClick={() => jumpTo(id)}>
                 {label}
               </button>
@@ -584,6 +617,32 @@ export default function Analysis({ unit, onUnitChange }) {
           </nav>
 
           <Records runs={runs} unit={unit} />
+
+          {onPlan && (
+            <Section
+              id="plan"
+              title="The ladder"
+              blurb="The twelve weeks of Hal Higdon’s Novice 1 half marathon plan, against what you actually ran. The race at the top is optional; the climb is the part that’s happening."
+            >
+              <PlanSection runs={runs} unit={unit} />
+            </Section>
+          )}
+
+          <Section
+            id="long"
+            title="Going long"
+            blurb="The Sunday run getting longer, what the extra distance costs in pace, and how each long run held together."
+          >
+            <LongSection chron={chron} unit={unit} planned={onPlan ? planned : null} />
+          </Section>
+
+          <Section
+            id="walks"
+            title="Walk breaks"
+            blurb="Where the running stopped. Coming back, a 5K was a run with a dozen walks in it; the question is what happened to them."
+          >
+            <WalkSection chron={chron} unit={unit} />
+          </Section>
 
           <Section
             id="efforts"
@@ -635,9 +694,9 @@ export default function Analysis({ unit, onUnitChange }) {
             <VolumeSection chron={chron} unit={unit} />
           </Section>
 
-          {data.paceHistogram && (
+          {spectrum && (
             <Section id="spectrum" title="Where the time goes">
-              <SpectrumSection histogram={data.paceHistogram} unit={unit} />
+              <SpectrumSection histogram={spectrum} unit={unit} />
             </Section>
           )}
 

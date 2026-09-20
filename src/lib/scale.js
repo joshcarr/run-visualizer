@@ -41,3 +41,15 @@ export function monthLabel(ms) {
   const month = d.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })
   return d.getUTCMonth() === 0 ? `${month} ’${String(d.getUTCFullYear()).slice(2)}` : month
 }
+
+// Axis labels on a categorical chart land at whatever index their month starts
+// at, which can put two of them on top of each other when one month only has a
+// run or two in it. Keeps the most recent and works backwards, dropping any
+// label that would crowd the one after it.
+export function spacedTicks(ticks, minGap) {
+  const out = []
+  for (let i = ticks.length - 1; i >= 0; i--) {
+    if (!out.length || out[out.length - 1].i - ticks[i].i >= minGap) out.push(ticks[i])
+  }
+  return out.reverse()
+}
