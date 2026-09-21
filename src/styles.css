@@ -1187,6 +1187,232 @@ a:hover > .acht__dot {
   color: var(--ink);
 }
 
+/* the training ladder */
+.plan {
+  list-style: none;
+  margin: 18px 0 0;
+  padding: 0;
+}
+
+.plan__row + .plan__row {
+  border-top: 1px solid var(--line);
+}
+
+.plan__row > a,
+.plan__row > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 6px 7px 0;
+  border-radius: 10px;
+}
+
+.plan__row > a:hover {
+  background: var(--surface-2);
+}
+
+.plan__row.is-ahead {
+  color: var(--ink-3);
+}
+
+.plan__row.is-now > a,
+.plan__row.is-now > div {
+  background: var(--surface-2);
+}
+
+.plan__when {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  width: 7.5em;
+}
+
+.plan__when b {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.plan__when span {
+  color: var(--ink-3);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.plan__bars {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 18px;
+}
+
+.plan__bar {
+  position: absolute;
+  left: 0;
+  border-radius: 3px;
+}
+
+.plan__bar--ask {
+  top: 0;
+  height: 18px;
+  background: var(--surface-3);
+}
+
+.plan__bar--did {
+  top: 3px;
+  height: 12px;
+  background: var(--accent);
+}
+
+.plan__nums {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  width: 8em;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.plan__nums b {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.plan__ask-label {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+/* the week's sessions, as the plan prints them */
+.plan__week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.plan__day {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.plan__day.is-done {
+  color: var(--ink-2);
+}
+
+.plan__day.is-today {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.plan__dow {
+  color: var(--ink-3);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.plan__asked {
+  font-weight: 600;
+}
+
+.plan__did-run {
+  color: var(--accent);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.plan__did-run:hover {
+  text-decoration: underline;
+}
+
+/* one run as a single strip: walk breaks cut out, or its pace shape */
+.strips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.strips li + li {
+  border-top: 1px solid var(--line);
+}
+
+.strips a {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 6px 9px 0;
+  border-radius: 10px;
+}
+
+.strips a:hover {
+  background: var(--surface-2);
+}
+
+.strip__meta {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  width: 12em;
+}
+
+.strip__meta b {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.strip__meta span {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.strip__bar {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--accent);
+  opacity: 0.85;
+  overflow: hidden;
+}
+
+.strip__walk {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: var(--surface-3);
+}
+
+.strip__spark {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+}
+
+.strip__spark path {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.75;
+  stroke-linejoin: round;
+}
+
+.strip__mid {
+  stroke: var(--ink-3);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.6;
+}
+
 @media (max-width: 620px) {
   .tiles,
   .tiles--three,
@@ -1213,5 +1439,25 @@ a:hover > .acht__dot {
 
   .core-list__bars {
     display: none;
+  }
+
+  .plan__when {
+    width: 5.6em;
+  }
+
+  .plan__nums {
+    width: 5.6em;
+  }
+
+  .plan__ask-label {
+    font-size: 11px;
+  }
+
+  .plan__week {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .strip__meta {
+    width: 9em;
   }
 }

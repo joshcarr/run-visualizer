@@ -46,6 +46,11 @@ export function runFullDate(ms, tz) {
   return `${p.weekday}, ${p.month} ${p.day}, ${p.year}`
 }
 
+// "Feb 2026" — for chips and captions where the full month name is too long.
+export function monthShort(ms, tz) {
+  return new Intl.DateTimeFormat('en-US', { timeZone: tz, month: 'short', year: 'numeric' }).format(ms)
+}
+
 export function monthKey(ms, tz) {
   return new Intl.DateTimeFormat('en-US', { timeZone: tz, month: 'long', year: 'numeric' }).format(ms)
 }

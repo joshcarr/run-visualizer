@@ -1,7 +1,13 @@
 // Aggregations over the run index. Everything here works on the summaries in
 // index.json — the per-run best efforts were computed at build time, so ranking
 // 78 runs against each other is cheap enough to do on every render.
-import { CORE_FRACTION, DISTANCE_EFFORTS, DURATION_EFFORTS } from './efforts.js'
+import {
+  CORE_FRACTION,
+  DISTANCE_EFFORTS,
+  DURATION_EFFORTS,
+  LONG_RUN_KM,
+  WALK_MIN_SEC,
+} from './efforts.js'
 
 const DAY_MS = 86400000
 
@@ -137,17 +143,18 @@ export function weeklyVolume(runs) {
   for (const run of runs) {
     if (!run.date) continue
     const key = weekStart(run.date).toISOString().slice(0, 10)
-    const week = byWeek.get(key) ?? { key, km: 0, runs: 0, sec: 0 }
+    const week = byWeek.get(key) ?? { key, km: 0, runs: 0, sec: 0, longest: null }
     week.km += run.distanceKm
     week.sec += run.durationSec
     week.runs += 1
+    if (!week.longest || run.distanceKm > week.longest.distanceKm) week.longest = run
     byWeek.set(key, week)
   }
   const keys = [...byWeek.keys()].sort()
   const out = []
   for (let t = Date.parse(keys[0]); t <= Date.parse(keys[keys.length - 1]); t += 7 * DAY_MS) {
     const key = new Date(t).toISOString().slice(0, 10)
-    out.push(byWeek.get(key) ?? { key, km: 0, runs: 0, sec: 0 })
+    out.push(byWeek.get(key) ?? { key, km: 0, runs: 0, sec: 0, longest: null })
   }
   return out
 }
@@ -237,4 +244,116 @@ export function rebinPace(histogram, { from, to, width, convert = (v) => v }) {
   const first = out.findIndex((b) => b.seconds > 0)
   const last = out.length - 1 - [...out].reverse().findIndex((b) => b.seconds > 0)
   return first < 0 ? [] : out.slice(Math.max(0, first - 1), Math.min(out.length, last + 2))
+}
+
+// How long a layoff has to be before the runs on either side of it stop being
+// the same stretch of training. Three weeks off is a different person coming
+// back; three days off is a rest.
+export const BLOCK_GAP_DAYS = 30
+
+// Splits the history wherever the running stopped for a month or more, so the
+// current block can be looked at on its own. Chronological in, chronological
+// out, newest block last.
+export function trainingBlocks(chron, gapDays = BLOCK_GAP_DAYS) {
+  const blocks = []
+  let current = []
+  for (let i = 0; i < chron.length; i++) {
+    if (i > 0 && (chron[i].startMs - chron[i - 1].startMs) / DAY_MS > gapDays) {
+      blocks.push(current)
+      current = []
+    }
+    current.push(chron[i])
+  }
+  if (current.length) blocks.push(current)
+  return blocks.map((runs) => ({
+    runs,
+    from: runs[0],
+    to: runs[runs.length - 1],
+    days: (runs[runs.length - 1].startMs - runs[0].startMs) / DAY_MS + 1,
+  }))
+}
+
+// Everything about the walking, per run and in aggregate. `share` is the
+// fraction of the run spent walking, which is the number that actually moved:
+// the count of breaks stayed flat for weeks while they got shorter.
+export function walkRows(chron) {
+  return chron
+    .filter((r) => r.efforts?.walk && r.durationSec > 0)
+    .map((run) => ({
+      run,
+      count: run.efforts.walk.count,
+      sec: run.efforts.walk.sec,
+      km: run.efforts.walk.km,
+      share: run.efforts.walk.sec / run.durationSec,
+      segs: run.efforts.walk.segs ?? [],
+    }))
+}
+
+export function walkSummary(rows) {
+  if (!rows.length) return null
+  const clean = rows.filter((r) => !r.count)
+  const recent = rows.slice(-10)
+  // Trailing streak of runs finished without a single break.
+  let streak = 0
+  for (let i = rows.length - 1; i >= 0 && !rows[i].count; i--) streak++
+  return {
+    runs: rows.length,
+    clean: clean.length,
+    sec: rows.reduce((s, r) => s + r.sec, 0),
+    streak,
+    recentClean: recent.filter((r) => !r.count).length,
+    recentOf: recent.length,
+    // The furthest you have gone without stopping to walk.
+    furthestClean: clean.reduce((best, r) => (!best || r.run.distanceKm > best.run.distanceKm ? r : best), null),
+    worst: rows.reduce((best, r) => (!best || r.share > best.share ? r : best), null),
+    lastBreak: [...rows].reverse().find((r) => r.count) ?? null,
+    minSec: WALK_MIN_SEC,
+  }
+}
+
+// Runs filed by how far they went, so "what does the extra distance cost me"
+// has an answer. The bands come from the distances actually run — rounded to
+// the nearest half a mile, or half a kilometre — rather than fixed edges,
+// because the same loop repeated forty times is its own band.
+export function distanceGroups(runs, toDisplay, step = 0.5, minRuns = 2) {
+  const groups = new Map()
+  for (const run of runs) {
+    if (!run.durationSec) continue
+    const at = Math.round(toDisplay(run.distanceKm) / step) * step
+    const group = groups.get(at) ?? { at, runs: [], km: 0, sec: 0 }
+    group.runs.push(run)
+    group.km += run.distanceKm
+    group.sec += run.durationSec
+    groups.set(at, group)
+  }
+  return [...groups.values()]
+    .filter((g) => g.runs.length >= minRuns)
+    .sort((a, b) => a.at - b.at)
+    .map((g) => ({
+      at: g.at,
+      count: g.runs.length,
+      pace: g.km > 0 ? g.sec / 60 / g.km : null,
+      best: g.runs.reduce((a, b) => (b.avgPaceMinPerKm < a.avgPaceMinPerKm ? b : a), g.runs[0]),
+      walkShare: median(g.runs.map((r) => (r.efforts?.walk?.sec ?? 0) / r.durationSec)),
+      last: g.runs.reduce((a, b) => (b.startMs > a.startMs ? b : a), g.runs[0]),
+    }))
+}
+
+export const isLongRun = (run) => run.distanceKm >= LONG_RUN_KM
+
+// Adds up the per-run spectra the build step stored, so "where the time goes"
+// answers for whichever runs are on screen rather than for all of them.
+export function mergeSpectra(runs, geometry) {
+  const bins = new Array(Math.round((geometry.to - geometry.from) / geometry.width)).fill(0)
+  let any = false
+  for (const run of runs) {
+    const sp = run.spectrum
+    if (!sp) continue
+    any = true
+    sp.seconds.forEach((sec, i) => {
+      const idx = sp.at + i
+      if (idx >= 0 && idx < bins.length) bins[idx] += sec
+    })
+  }
+  return any ? { ...geometry, seconds: bins } : null
 }

@@ -64,7 +64,8 @@ distance, steps, calories) plus a summary block.
 1.9 MB, written to `public/data/` (generated, so it isn't checked in):
 
 - `index.json` — one summary per run for the list view, including a normalised
-  route outline for the thumbnail, each run's best efforts, and lifetime totals.
+  route outline for the thumbnail, each run's best efforts and walk breaks, its
+  own slice of the pace histogram, and lifetime totals.
 - `runs/<id>.json` — the full track for one run: position, elevation, pace and
   cumulative distance at every GPS sample, plus mile and kilometre markers.
 
@@ -77,7 +78,9 @@ Along the way the script:
 - smooths pace and elevation over a time window, since raw GPS pace is noisy,
 - looks up each run's timezone from its start coordinates, so a run is dated in
   the place it happened rather than wherever you're reading it,
-- and works out every best effort in the run — see below.
+- works out every best effort in the run — see below,
+- and finds the walk breaks: stretches slower than 12:00 per mile held for at
+  least half a minute, which is walking rather than a kerb or a gate.
 
 ## Best efforts
 
@@ -103,8 +106,9 @@ three searches over it:
 Each search anchors one end of the window on a sample and interpolates the
 other, in both directions, so the answer doesn't depend on where the samples
 happened to land. Each run also stores its pace shape (pace across twentieths of
-its distance, divided by its own average) and contributes to a histogram of time
-spent at each pace.
+its distance, divided by its own average) and its own slice of the pace
+histogram, so "where the time goes" can be answered for any subset of runs
+rather than only for all of them.
 
 ## The app
 
@@ -112,12 +116,29 @@ spent at each pace.
 title, distance, average pace, time, and a small route outline drawn as plain
 SVG (no map tiles, so a list of 78 runs stays cheap).
 
-**Analysis** (`#/analysis`) — everything measured across all the runs at once:
-leaderboards of the fastest mile, 5K and so on with the record stepping down
-over the months; the same for sprints; what trimming the warm-up and cool-down
-is actually worth; the median shape of a run; pace progression, weekly volume,
-a histogram of time spent at each pace, and which days, times and temperatures
-you run in. Every leaderboard row links to the run with that stretch lit up.
+**Analysis** (`#/analysis`) — everything measured across a stretch of running at
+once. It opens on the current block: the history is split wherever the running
+stopped for a month or more, since the runs either side of a layoff aren't the
+same training, and one chip switches back to the whole thing.
+
+The page leads with where the training is now:
+
+- **The ladder** — the twelve weeks of the half marathon plan in `src/lib/plan.js`
+  against what was actually run, week by week, plus the current week's sessions.
+  `PLAN_START` is the Monday week 1 began; move it if a week gets skipped and the
+  alignment drifts.
+- **Going long** — the longest run of each week, what the extra distance costs in
+  pace (every recent run filed by distance), and each long run's pace shape as a
+  sparkline.
+- **Walk breaks** — the share of each run spent walking, run by run, and the same
+  thing one run at a time as a bar with the breaks cut out of it.
+
+Then the measurements that hold whatever you're training for: leaderboards of the
+fastest mile, 5K and so on with the record stepping down over the months; the same
+for sprints; what trimming the warm-up and cool-down is actually worth; the median
+shape of a run; pace progression, weekly volume, a histogram of time spent at each
+pace, and which days, times and temperatures you run in. Every leaderboard row
+links to the run with that stretch lit up.
 
 **Detail** — the headline distance and the stats NRC shows (average pace, time,
 calories, elevation gain, cadence, steps), then:

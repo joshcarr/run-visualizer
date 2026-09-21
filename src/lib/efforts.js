@@ -41,3 +41,14 @@ export const PROFILE_BUCKETS = 20
 // number, and printing it twice just looks like a mistake.
 export const paceIsRedundant = (key, unit) =>
   (key === '1mi' && unit === 'mi') || (key === '1km' && unit === 'km')
+
+// A walk break is a stretch slow enough that it isn't running — slower than
+// 12:00 per mile — held for long enough that it wasn't a kerb or a gate. Both
+// numbers live here because the build step finds the breaks and the analysis
+// page has to explain the rule it used.
+export const WALK_PACE_MIN_PER_KM = 12 / 1.609344
+export const WALK_MIN_SEC = 30
+
+// Long enough to count as a long run rather than the usual loop. Everything
+// above this is the Sunday run, in practice.
+export const LONG_RUN_KM = 6

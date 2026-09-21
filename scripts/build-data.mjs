@@ -10,12 +10,16 @@ import {
   paceHistogram,
   paceProfile,
   pausedIntervals,
+  sparseHistogram,
+  walkBreaks,
 } from './best-efforts.mjs'
 import {
   CORE_FRACTION,
   DISTANCE_EFFORTS,
   DURATION_EFFORTS,
   PROFILE_BUCKETS,
+  WALK_MIN_SEC,
+  WALK_PACE_MIN_PER_KM,
 } from '../src/lib/efforts.js'
 
 const SRC = 'activities'
@@ -199,8 +203,22 @@ function bestEfforts(series) {
   const coreTarget = totalKm * CORE_FRACTION
   const core = bestForDistance(series, coreTarget)
 
+  const walks = walkBreaks(series, {
+    paceMinPerKm: WALK_PACE_MIN_PER_KM,
+    minSec: WALK_MIN_SEC,
+  })
+
   return {
     activeSec: round(totalSec, 1),
+    // Where the running stopped: a count, the time it cost, and each break as
+    // [second it started, how long it lasted] for the timeline on the analysis
+    // page.
+    walk: {
+      count: walks.length,
+      sec: round(walks.reduce((s, w) => s + w.sec, 0), 0),
+      km: round(walks.reduce((s, w) => s + w.km, 0), 3),
+      segs: walks.map((w) => [round(w.startSec, 0), round(w.sec, 0)]),
+    },
     distances,
     durations,
     core: core && {
@@ -233,6 +251,7 @@ function buildRun(file) {
   const paced = activeSeries(metricValues(activity, 'distance'), pausedIntervals(activity))
   const efforts = paced.d[paced.d.length - 1] > 0 ? bestEfforts(paced) : null
   const histogram = efforts ? paceHistogram(paced, { ...HIST, slice: 10 }) : null
+  const spectrum = histogram ? sparseHistogram(histogram) : null
 
   // Raw track, with pauses detected from gaps between GPS fixes.
   const raw = []
@@ -318,6 +337,9 @@ function buildRun(file) {
     weather: detail.weather,
     thumb: thumbnail(points),
     efforts,
+    // This run's own slice of the pace histogram, tails trimmed, so the
+    // analysis page can rebuild the spectrum for any subset of runs.
+    spectrum,
     // Local calendar fields, worked out here where the timezone is already
     // known, so the analysis page can group by week or weekday without
     // re-deriving them 78 times in the browser.
