@@ -13,7 +13,7 @@ npm run build    # regenerates the data, then builds to dist/
 ## Getting new runs
 
 ```bash
-cp .env.example .env    # once: paste a Nike token in
+cp .env.example .env    # once: paste a Nike token and a CARTO tile key in
 npm run sync            # downloads runs that aren't in activities/ yet
 npm run dev             # rebuilds the data and serves the app
 ```
@@ -53,6 +53,10 @@ Actions**. The site is served from a subdirectory, which the app already handles
 `vite.config.js` sets `base: './'` so the asset and data URLs stay relative, and
 the router reads `window.location.hash`, so a link straight to a single run
 survives a hard refresh without any redirect rules.
+
+The build reads `CARTO_API_KEY` from the environment so map tiles are not
+watermarked. Add it as a repository secret of that name (Settings → Secrets
+and variables → Actions); it is already in local `.env`.
 
 ## How it works
 
@@ -153,5 +157,5 @@ calories, elevation gain, cadence, steps), then:
 
 Distances toggle between miles and kilometres; the choice sticks.
 
-Map tiles come from CARTO's OpenStreetMap basemaps, so the map needs network
-access. Everything else works offline.
+Map tiles come from CARTO's OpenStreetMap basemaps (with `CARTO_API_KEY` on the
+tile URL), so the map needs network access. Everything else works offline.

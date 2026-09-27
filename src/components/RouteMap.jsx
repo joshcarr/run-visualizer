@@ -4,9 +4,14 @@ import { paceColor, rampCss } from '../lib/paceColor.js'
 import { formatMinutes, formatPace, UNITS } from '../lib/units.js'
 
 const BINS = 18
+const CARTO_KEY = import.meta.env.CARTO_API_KEY
+const cartoTiles = (style) => {
+  const url = `https://{s}.basemaps.cartocdn.com/${style}/{z}/{x}/{y}{r}.png`
+  return CARTO_KEY ? `${url}?key=${encodeURIComponent(CARTO_KEY)}` : url
+}
 const TILES = {
-  light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-  dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+  light: cartoTiles('light_all'),
+  dark: cartoTiles('dark_all'),
 }
 const ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, &copy; <a href="https://carto.com/attributions">CARTO</a>'
